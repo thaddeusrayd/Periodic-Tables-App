@@ -1,4 +1,5 @@
-<<<<<<< HEAD
-=======
+# Installation Instructions
 
->>>>>>> 79ffccb3e1492a452a533096f2693af3a9890e65
+1. run 'npm install --legacy-peer-deps'
+2. run 'npm run start'
+3. run 'npm run test'
