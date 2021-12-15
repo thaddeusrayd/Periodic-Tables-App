@@ -1,13 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useHistory } from "react-router-dom";
 import { useParams } from "react-router";
-import { today, formatAsTime } from "../../utils/date-time";
+import moment from "moment";
+import { today } from "../../utils/date-time";
 import {
   postReservation,
   updateReservation,
   getReservation,
 } from "../../utils/api";
 import ErrorAlert from "../../layout/ErrorAlert";
+
+const timeTo24HrFormat = (val) => {
+  let converted = moment(val, ["h:mm A"]).format("HH:mm");
+  if (converted === "Invalid date") {
+    converted = moment(val, ["HH:mm"]).format("HH:mm");
+    if (converted === "Invalid date") return val;
+  }
+
+  return converted;
+};
 
 /**
  * A controlled form used for creating and modifying reservations
@@ -16,6 +27,7 @@ import ErrorAlert from "../../layout/ErrorAlert";
 function Form({ method }) {
   const { reservation_id } = useParams();
   const [reservationsError, setReservationError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const history = useHistory();
 
   const initialFormState = {
@@ -23,7 +35,7 @@ function Form({ method }) {
     last_name: "",
     mobile_number: "",
     reservation_date: today(),
-    reservation_time: formatAsTime(new Date().toTimeString()),
+    reservation_time: "",
     people: 1,
   };
 
@@ -43,6 +55,63 @@ function Form({ method }) {
     return () => abortController.abort();
   }, [reservation_id, method]);
 
+  const sanitizeReservationTime = () => {
+    setFormData((state) => ({
+      ...state,
+      reservation_time: timeTo24HrFormat(state.reservation_time),
+    }));
+  };
+
+  const submitNew = useCallback(() => {
+    const abortController = new AbortController();
+    setReservationError(null);
+
+    postReservation(formData, abortController.signal)
+      .then(() => {
+        setSubmitting(false);
+        history.push(`/dashboard?date=${formData.reservation_date}`);
+      })
+      .catch((err) => {
+        setSubmitting(false);
+        setReservationError(err);
+      });
+
+    return () => abortController.abort();
+  }, [setReservationError, formData, setSubmitting, history]);
+
+  const submitEdit = useCallback(() => {
+    const abortController = new AbortController();
+    setReservationError(null);
+
+    // removes properties from GET for error free PUT
+    const trimmedFormData = {
+      first_name: formData.first_name,
+      last_name: formData.last_name,
+      people: formData.people,
+      mobile_number: formData.mobile_number,
+      reservation_date: formData.reservation_date,
+      reservation_time: formData.reservation_time,
+    };
+
+    updateReservation(reservation_id, trimmedFormData, abortController.signal)
+      .then(() => {
+        setSubmitting(false);
+        history.push(`/dashboard?date=${formData.reservation_date}`);
+      })
+      .catch((err) => {
+        setSubmitting(false);
+        setReservationError(err);
+      });
+
+    return () => abortController.abort();
+  }, [setReservationError, setSubmitting, history, formData, reservation_id]);
+
+  useEffect(() => {
+    if (submitting) {
+      method === "POST" ? submitNew() : submitEdit();
+    }
+  }, [submitting, method, submitEdit, submitNew]);
+
   const handleChange = ({ target }) => {
     let value = target.value;
 
@@ -59,39 +128,10 @@ function Form({ method }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    method === "POST" ? submitNew() : submitEdit();
-  };
 
-  const submitNew = () => {
-    const abortController = new AbortController();
-    setReservationError(null);
+    sanitizeReservationTime();
 
-    postReservation(formData, abortController.signal)
-      .then(() => history.push(`/dashboard?date=${formData.reservation_date}`))
-      .catch(setReservationError);
-
-    return () => abortController.abort();
-  };
-
-  const submitEdit = () => {
-    const abortController = new AbortController();
-    setReservationError(null);
-
-    // removes properties from GET for error free PUT
-    const trimmedFormData = {
-      first_name: formData.first_name,
-      last_name: formData.last_name,
-      people: formData.people,
-      mobile_number: formData.mobile_number,
-      reservation_date: formData.reservation_date,
-      reservation_time: formData.reservation_time,
-    };
-
-    updateReservation(reservation_id, trimmedFormData, abortController.signal)
-      .then(() => history.push(`/dashboard?date=${formData.reservation_date}`))
-      .catch(setReservationError);
-
-    return () => abortController.abort();
+    setSubmitting(true);
   };
 
   const handleCancel = (event) => {
@@ -185,7 +225,7 @@ function Form({ method }) {
               <div className="col-6 pt-2">
                 <input
                   id="reservation_time"
-                  type="time"
+                  type="text"
                   name="reservation_time"
                   className="form-control"
                   onChange={handleChange}
